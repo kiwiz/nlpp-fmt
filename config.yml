@@ -1,0 +1,347 @@
+# Base configuration
+
+# Renders embedded new lines in unpacked dialog as "◙"
+render_new_lines: true
+# If dialog is in Japanese, output original text prefixed with `//` (comments).
+# "Commented" lines are useful for notes as they are ignored when repacking
+comment_japanese: false
+# Rename tags to English (per the `aliases` mapping below)
+alias_tags: true
+
+tags:
+  # Tag aliases (old -> new)
+  # Mapping of tags to their English counterparts
+  aliases:
+    "FIRST": "名前"
+    "LAST": "苗字"
+    "PLAYER": "主人公＊"
+    "NEWPLAYER": "新主人公"
+    "MANAKA": "高嶺＊＊"
+    "RINKO": "小早川＊"
+    "NENE": "姉ヶ崎＊"
+    "GIRLNAME": "彼女＊＊"
+    "MONTH": "月"
+    "DAY": "日"
+    "TIME": "時刻"
+    "LOCATION": "デート場所"
+    "LIVEHOUSE": "ライブハウス"
+    "EVENTHALL": "イベントホール"
+    "OPTION1": "生成選択肢１"
+    "OPTION2": "生成選択肢２"
+    "OPTION3": "生成選択肢３"
+    "OPTION4": "生成選択肢４"
+    "OPTION5": "生成選択肢５"
+    "OPTION6": "生成選択肢６"
+    "FRIEND": "紹介友達名"
+    "BAND": "バンド＊"
+    "MENU": "メニュー"
+    "MENU1": "メニュー１"
+    "MENU2": "メニュー２"
+    "MENU3": "メニュー３"
+    "MENU4": "メニュー４"
+    "MENU5": "メニュー５"
+    "RESTAURANT": "飲食店＊＊＊＊＊"
+    "BOOK": "本の名前＊＊＊＊＊＊"
+    "DATEITEM": "特別デートアイテム＊＊"
+    "ITEM": "アイテム名"
+    "COOKING": "料理ジャンル"
+    "SPOT": "スポット名＊＊＊＊＊＊"
+    "PHOTOCONTESTNOW": "写真コンテスト今月・募集中＊"
+    "PHOTOCONTESTBEF": "写真コンテスト先月＊＊＊＊＊"
+
+  # Tag lengths (name -> len)
+  # Character count of tags when reflowing text
+  lengths:
+    "名前": 8
+    "苗字": 8
+    "主人公＊": 17
+    "新主人公": 17
+    "高嶺＊＊": 17
+    "小早川＊": 17
+    "姉ヶ崎＊": 17
+    "彼女＊＊": 17
+    "月": 4
+    "日": 4
+    "時刻": 8  # ?
+    "デート場所": 20
+    "CINEMA1": 30
+    "CINEMA2": 30
+    "ライブハウス": 30
+    "イベントホール": 30
+    "生成選択肢１": 26
+    "生成選択肢２": 26
+    "生成選択肢３": 26
+    "生成選択肢４": 26
+    "生成選択肢５": 26
+    "生成選択肢６": 26
+    "紹介友達名": 17
+    "バンド＊": 30
+    "メニュー": 30
+    "メニュー１": 30
+    "メニュー２": 30
+    "メニュー３": 30
+    "メニュー４": 30
+    "メニュー５": 30
+    "飲食店＊＊＊＊＊": 20
+    "本の名前＊＊＊＊＊＊": 30
+    "特別デートアイテム＊＊": 30
+    "アイテム名": 30
+    "料理ジャンル": 30
+    "スポット名＊＊＊＊＊＊": 30
+    "写真コンテスト今月・募集中＊": 30
+    "写真コンテスト先月＊＊＊＊＊": 30
+
+# Text substitutions (old -> new)
+# Automatic text replacements when reflowing text
+substitutions:
+  - ["!", "！"]
+  - ["?", "？"]
+  - ["（", "("]
+  - ["）", ")"]
+  - ["。", "."]
+  - ["、", ","]
+  - ["~", "～"]
+
+# Line overrides
+# Overrides for individual lines of dialog
+# Important: Duplicate keys will conflict with each other
+overrides:
+  # Target file
+  "target_file.xml":
+    # Target line ID
+    "00001":
+      # Whether to skip ALL processing (reflowing, substitution, etc). Defaults to `false`
+      preserve: false
+      # Whether to substitute characters (!?,). Defaults to `true`
+      substitute: true
+      # Whether to disable text reflowing. The "◙" character can be used for manual reflowing. Defaults to `false`
+      manual: false
+      # Override for max line length
+      max_len: 26
+      # Overrides for individual tag lengths
+      tag_lengths:
+        "姉ヶ崎＊": 8
+        "生成選択肢１": 5
+
+  "a001.xml":
+    "00122":
+      max_len: 26
+    "00123":
+      max_len: 26
+    "00213":
+      max_len: 26
+    "00214":
+      max_len: 26
+    "00246":
+      max_len: 26
+    "00247":
+      max_len: 26
+    "00279":
+      max_len: 26
+    "00280":
+      max_len: 26
+    "00312":
+      max_len: 26
+    "00313":
+      max_len: 26
+    "00449":
+      max_len: 26
+
+  "a051.xml":
+    "00003":
+      max_len: 26
+    "00016":
+      max_len: 26
+    "00029":
+      max_len: 26
+    "00044":
+      max_len: 26
+    "00059":
+      max_len: 26
+    "00074":
+      max_len: 26
+    "00088":
+      max_len: 26
+    "00103":
+      max_len: 26
+    "00116":
+      max_len: 26
+    "00129":
+      max_len: 26
+    "00142":
+      max_len: 26
+    "00155":
+      max_len: 26
+    "00167":
+      max_len: 26
+    "00181":
+      max_len: 26
+
+  "a953.xml":
+    "00003":
+      preserve: true
+
+  "k001.xml":
+    "00079":
+      max_len: 26
+    "00197":
+      max_len: 26
+    "00232":
+      max_len: 26
+    "00271":
+      max_len: 26
+    "00311":
+      max_len: 26
+
+  "k051.xml":
+    "00003":
+      max_len: 26
+    "00018":
+      max_len: 26
+    "00033":
+      max_len: 26
+    "00048":
+      max_len: 26
+    "00061":
+      max_len: 26
+    "00074":
+      max_len: 26
+    "00089":
+      max_len: 26
+    "00102":
+      max_len: 26
+    "00115":
+      max_len: 26
+    "00126":
+      max_len: 26
+    "00139":
+      max_len: 26
+    "00152":
+      max_len: 26
+    "00164":
+      max_len: 26
+    "00178":
+      max_len: 26
+    "00196":
+      max_len: 26
+    "00208":
+      max_len: 26
+    "00220":
+      max_len: 26
+    "00234":
+      max_len: 26
+    "00246":
+      max_len: 26
+    "00258":
+      max_len: 26
+    "00281":
+      max_len: 26
+    "00293":
+      max_len: 26
+
+  "k953.xml":
+    "00003":
+      preserve: true
+
+  "p000.xml":
+    "00019":
+      max_len: 26
+    "00020":
+      max_len: 26
+    "00021":
+      max_len: 26
+    "00027":
+      max_len: 26
+    "00028":
+      max_len: 26
+
+  "p088.xml":
+    "00003":
+      max_len: 26
+    "00004":
+      max_len: 26
+    "00021":
+      max_len: 26
+
+  "p900.xml":
+    "00000":
+      preserve: true
+    "00025":
+      max_len: 26
+
+  "p936.xml":
+    "00000":
+      preserve: true
+    "00005":
+      preserve: true
+    "00008":
+      preserve: true
+    "00010":
+      preserve: true
+
+  "p966.xml":
+    "00000":
+      preserve: true
+    "00003":
+      max_len: 26
+    "00004":
+      max_len: 26
+    "00005":
+      max_len: 26
+    "00021":
+      max_len: 26
+
+  "t001.xml":
+    "00240":
+      max_len: 26
+    "00241":
+      max_len: 26
+    "00290":
+      max_len: 26
+    "00291":
+      max_len: 26
+    "00340":
+      max_len: 26
+    "00341":
+      max_len: 26
+    "00392":
+      max_len: 26
+    "00393":
+      max_len: 26
+    "00492":
+      max_len: 26
+
+  "t051.xml":
+    "00003":
+      max_len: 26
+    "00018":
+      max_len: 26
+    "00033":
+      max_len: 26
+    "00046":
+      max_len: 26
+    "00059":
+      max_len: 26
+    "00072":
+      max_len: 26
+    "00085":
+      max_len: 26
+    "00098":
+      max_len: 26
+    "00111":
+      max_len: 26
+    "00123":
+      max_len: 26
+    "00136":
+      max_len: 26
+    "00149":
+      max_len: 26
+    "00161":
+      max_len: 26
+    "00173":
+      max_len: 26
+
+  "t953.xml":
+    "00003":
+      preserve: true
+
