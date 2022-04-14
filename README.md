@@ -63,6 +63,6 @@ To repack the merged `.txt` worksheets, place them in the same directory as the 
 
 ## Configuration
 
-The file <./config.yml> is a YAML file containing the configuration for the tool. The options are documented via the lines prefixed with `#` (comments).
+The file [./config.yml](config.yml) is a YAML file containing the configuration for the tool. All options are documented via the lines prefixed with `#` (comments).
 
 **Note**: Lines requiring overrides (to skip reflowing or to handle multiple-choice options) have not been full populated into the config. They will be periodically added when discovered.

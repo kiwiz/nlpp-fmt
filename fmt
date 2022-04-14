@@ -1,0 +1,463 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import re
+import glob
+import argparse
+import logging
+import xml.etree.ElementTree as ET
+import yaml
+from typing import List, TextIO, Dict, Optional, Tuple
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+VERSION = "1.9.8"
+
+MAX_LEN = 30
+LINE_BREAK = "◙"
+TAG = "▲"
+
+WHITESPACE_RE = re.compile(r"\s+")
+WHITESPACE_INCL_RE = re.compile(r"(\s+)")
+COMMA_RE = re.compile(r'\s*,\s*(?!")')
+NUMBERWITHCOMMA_RE = re.compile(r"(?<=\d)\s*,\s*(?=\d)")
+
+KANJI_PATTERN = "[\u4E00-\u9FFF]"
+FWNUMBER_PATTERN = "[\uFF10-\uFF19]"
+FWLETTER_PATTERN = "[\uFF21-\uFF3A\uFF41-\uFF5A]"
+HWKATA_PATTERN = "[\uFF66-\uFF9F]"
+HIRA_PATTERN = "[\u3040-\u309F]"
+KATA_PATTERN = "[\u30A0-\u30FA\u30FD-\u30FF]"  # Excluding "・" and "ー"
+MISC_PATTERN = "[。…]"
+EXTRA_PATTERN = "[○●、]"
+JAPANESE_RE = re.compile(
+    "|".join(
+        [
+            HIRA_PATTERN,
+            KATA_PATTERN,
+            KANJI_PATTERN,
+            HWKATA_PATTERN,
+            MISC_PATTERN,
+        ]
+    )
+)
+JAPANESE_WITH_EXTRA_RE = re.compile(
+    "|".join(
+        [
+            HIRA_PATTERN,
+            KATA_PATTERN,
+            KANJI_PATTERN,
+            HWKATA_PATTERN,
+            MISC_PATTERN,
+            EXTRA_PATTERN,
+        ]
+    )
+)
+
+MERGED_DIR = "merged"
+
+
+def unpack(
+    fn: str,
+    aliases: Dict[str, str],
+    render_new_lines: bool,
+    comment_japanese: bool,
+    alias_tags: bool,
+):
+    # Extract all <Dialog> tags
+    tree = ET.parse(fn)
+    root = tree.getroot()
+    elems = root.findall(".//Dialog")
+
+    # Determine the appropriate new-line substitution
+    new = " "
+    if render_new_lines:
+        new = LINE_BREAK
+
+    reverse_aliases = {v: k for k, v in aliases.items()}
+    entries = []
+    for elem in elems:
+        txt = elem.text.replace("\n", new)
+
+        if alias_tags:
+            txt = alias(txt, reverse_aliases)
+
+        # Comment out original text if in Japanese (for ease of translation)
+        if comment_japanese and contains_japanese(elem.text, True):
+            entries.append(([txt], []))
+        # Otherwise, output as is
+        else:
+            entries.append(([], [txt]))
+
+    # Generate .txt file with dialog
+    out_fn = f"{fn}.txt"
+    with open(out_fn, "w", encoding="utf-8") as fh:
+        dump_dialog(entries, fh)
+
+
+def repack(
+    fn: str,
+    aliases: Dict[str, str],
+    lengths: Dict[str, int],
+    overrides: Dict[str, Dict[int, int]],
+    substitutions: List[List[str]],
+):
+    out_fn, _ = os.path.splitext(fn)
+    override_key = os.path.basename(out_fn)
+    file_overrides = overrides.get(override_key, {})
+
+    # Extract all <Dialog> tags
+    tree = ET.parse(out_fn)
+    root = tree.getroot()
+    elems = root.findall(".//Dialog")
+
+    # Load .txt file with dialog
+    with open(fn, "r", encoding="utf-8") as fh:
+        entries = load_dialog(fh)
+
+    # Validate count
+    if len(entries) != len(elems):
+        logger.error(f"Mismatch in number of <Dialog> blocks")
+        return
+
+    # Reflow dialog if changed
+    for i in range(len(entries)):
+        txt = "\n".join(entries[i][1])
+
+        # Skip lines with Japanese
+        if contains_japanese(txt, False):
+            continue
+
+        # Skip blank lines
+        if not txt:
+            continue
+
+        # Get line-specific config
+        line_overrides = file_overrides.get("%05d" % i, {})
+
+        # Skip if the original content should be preserved
+        if line_overrides.get("preserve", False):
+            continue
+
+        txt = txt.replace(LINE_BREAK, "\n")
+        txt = alias(txt, aliases)
+
+        # Handle substitutions
+        if line_overrides.get("substitute", True):
+            txt = substitute(txt, substitutions)
+
+        # Handle reflowing
+        if not line_overrides.get("manual", False):
+            line_lengths = lengths.copy()
+            line_lengths.update(line_overrides.get("tag_lengths", {}))
+            txt = reflow(txt, line_lengths, line_overrides.get("max_len", MAX_LEN))
+
+        elems[i].text = txt
+
+    # Preserve formatting of XML declaration and root tag
+    keys = root.keys()
+    values = []
+    for key in keys:
+        values.append(root.attrib.pop(key))
+    root.set("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
+    root.set("xmlns:xsd", "http://www.w3.org/2001/XMLSchema")
+    for i, key in enumerate(keys):
+        root.set(key, values[i])
+
+    # Update .xml file
+    with open(out_fn, "wb") as fh:
+        fh.write(b'<?xml version="1.0" encoding="utf-8"?>\n')
+        tree.write(fh, encoding="utf-8", xml_declaration=False)
+
+
+def dump_dialog(lines: List[Tuple[List[str], List[str]]], fh: TextIO):
+    for i, entry in enumerate(lines):
+        fh.write(f"{i:05d}\n")
+        if entry[0]:
+            fh.write("\n".join((f"// {comment}" for comment in entry[0])))
+            fh.write("\n")
+        if entry[1]:
+            fh.write("\n".join(entry[1]))
+            fh.write("\n")
+
+
+def load_dialog(fh: TextIO) -> List[Tuple[List[str], List[str]]]:
+    ctr = 0
+    entries = []
+    line_parts = []
+    comment_parts = []
+
+    while True:
+        line = fh.readline()
+        if not line:
+            break
+
+        line = line.strip()
+
+        # Ignore comments
+        if line.startswith("//") or line.startswith("#"):
+            comment_parts.append(line[2:].strip())
+            continue
+
+        # Handle counter
+        curr = parse_counter(line)
+        if curr is not None:
+            if curr > 0:
+                entries.append((comment_parts, line_parts))
+                line_parts = []
+                comment_parts = []
+
+            # Validate count
+            if ctr != curr:
+                logger.error(f"Missing index: {ctr}")
+                ctr = curr
+
+            ctr += 1
+        # Handle text
+        else:
+            line_parts.append(line)
+
+    entries.append((comment_parts, line_parts))
+
+    return entries
+
+
+def parse_counter(txt: str) -> Optional[int]:
+    if len(txt) != 5:
+        return None
+
+    try:
+        return int(txt, 10)
+    except ValueError:
+        return None
+
+
+def str_len(txt: str) -> int:
+    return len(txt) + txt.count("！") + txt.count("？") + txt.count("▼")
+
+
+def contains_japanese(txt: str, include_extra: bool) -> bool:
+    regex = JAPANESE_RE
+    if include_extra:
+        regex = JAPANESE_WITH_EXTRA_RE
+
+    parts = WHITESPACE_RE.split(txt)
+
+    for part in parts:
+        tag_parts = part.split(TAG)
+
+        for i, tag_part in enumerate(tag_parts):
+            # Skip tags
+            if i % 2 == 1:
+                continue
+
+            # Check normal text for Japanese
+            if regex.search(tag_part):
+                return True
+
+    return False
+
+
+def alias(txt: str, aliases: Dict[str, str]) -> str:
+    parts = WHITESPACE_INCL_RE.split(txt)
+
+    new_parts = []
+    for i, part in enumerate(parts):
+        # Process non-whitespace parts
+        if i % 2 == 0:
+            tag_parts = part.split(TAG)
+
+            new_tag_parts = []
+            for j, tag_part in enumerate(tag_parts):
+                # Process tags
+                if j % 2 == 1:
+                    # Resolves aliases
+                    if tag_part in aliases:
+                        tag_part = aliases[tag_part]
+                new_tag_parts.append(tag_part)
+
+            part = TAG.join(new_tag_parts)
+
+        new_parts.append(part)
+
+    return "".join(new_parts)
+
+
+def substitute(txt: str, substitutions: List[List[str]]) -> str:
+    for old, new in substitutions:
+        txt = txt.replace(old, new)
+    txt = COMMA_RE.sub(", ", txt)
+    txt = NUMBERWITHCOMMA_RE.sub(",", txt)
+
+    return txt
+
+
+def reflow(txt: str, tags: Dict[str, int], max_len: int) -> str:
+    lines = []
+    line_parts = []
+    line_len = 0
+
+    parts = WHITESPACE_RE.split(txt)
+
+    for part in parts:
+        if not part:
+            continue
+
+        tag = TAG in part
+
+        # Process 1+ tags within a single chunk
+        if tag:
+            part_len = 0
+
+            tag_parts = part.split(TAG)
+            for i, tag_part in enumerate(tag_parts):
+                # Process regular text
+                if i % 2 == 0:
+                    part_len += str_len(tag_part)
+                # Process tag
+                else:
+                    if tag_part in tags:
+                        part_len += tags[tag_part]
+                    else:
+                        logger.error(f"Variable missing length: {tag_part}")
+        # Process regular text
+        else:
+            part_len = str_len(part)
+
+        if part_len > max_len:
+            logger.warning(f"Chunk is longer than line limit: {part}")
+
+        # Commit a new line if the current context exceeds the max line length AND content has already been committed (to prevent an empty first line)
+        if line_len + len(line_parts) + part_len > max_len and (lines or line_parts):
+            lines.append(" ".join(line_parts))
+            line_parts = []
+            line_len = 0
+
+        line_parts.append(part)
+        line_len += part_len
+
+    if line_parts:
+        lines.append(" ".join(line_parts))
+
+    return "\n".join(lines)
+
+
+def process_handler(args: argparse.Namespace, config: Dict):
+    tags = config.get("tags", {})
+
+    for fn in args.files:
+        _, ext = os.path.splitext(fn)
+        if ext == ".xml":
+            logger.info(f"Unpacking file: {fn}")
+            try:
+                unpack(
+                    fn,
+                    tags.get("aliases", {}),
+                    config.get("render_new_lines", False),
+                    config.get("comment_japanese", False),
+                    config.get("alias_tags", False),
+                )
+            except:
+                logger.exception("Error while unpacking")
+        elif ext == ".txt":
+            logger.info(f"Packing file: {fn}")
+            try:
+                repack(
+                    fn,
+                    tags.get("aliases", {}),
+                    tags.get("lengths", {}),
+                    config.get("overrides", {}),
+                    config.get("substitutions", []),
+                )
+            except:
+                logger.exception("Error while repacking")
+        else:
+            logger.error(f"Invalid input file: {fn}")
+
+
+def merge_handler(args: argparse.Namespace, config: Dict):
+    merged = {}
+
+    for j, directory in enumerate(sorted(args.directories)):
+        first = j == 0
+
+        for fn in glob.glob(os.path.join(directory, "*.txt")):
+            logger.info(f"Processing file: {fn}")
+            key = os.path.basename(fn)
+            merged_entries = merged.get(key, [])
+
+            with open(fn, "r", encoding="utf-8") as fh:
+                entries = load_dialog(fh)
+
+            for i in range(len(entries)):
+                # Extend list if necessary
+                if len(merged_entries) <= i:
+                    merged_entries.append([[], []])
+
+                orig_comment_parts = merged_entries[i][0]
+                orig_line_parts = merged_entries[i][1]
+                comment_parts = []
+                line_parts = []
+
+                # Use the first input as the comment
+                if first:
+                    comment_parts = entries[i][1]
+                else:
+                    # Use all other inputs as text (if different)
+                    if entries[i][1] != orig_comment_parts:
+                        line_parts = entries[i][1]
+
+                merged_entries[i] = (
+                    orig_comment_parts + comment_parts,
+                    orig_line_parts + line_parts,
+                )
+
+            merged[key] = merged_entries
+
+    os.makedirs(MERGED_DIR, exist_ok=True)
+
+    for key, merged_entries in merged.items():
+        with open(os.path.join(MERGED_DIR, key), "w", encoding="utf-8") as fh:
+            dump_dialog(merged_entries, fh)
+
+
+def parse_args(args: List[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=f"Dialog unpacker/repacker v{VERSION}")
+    parser.add_argument(
+        "--config-file", default="config.yml", help="Configuration file"
+    )
+
+    subparsers = parser.add_subparsers()
+    process_parser = subparsers.add_parser("process")
+    process_parser.add_argument(
+        "files", nargs="+", help="*.dbin2 files to unpack or *.txt files to repack"
+    )
+    process_parser.set_defaults(func=process_handler)
+
+    merge_parser = subparsers.add_parser("merge")
+    merge_parser.add_argument("directories", nargs="+", help="Directories to merge")
+    merge_parser.set_defaults(func=merge_handler)
+
+    return parser.parse_args(args)
+
+
+def main():
+    args = parse_args(sys.argv[1:])
+
+    with open(args.config_file, "r", encoding="utf-8") as fh:
+        config = yaml.safe_load(fh)
+
+    args.func(args, config)
+
+    input("Press Enter to quit")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        logger.exception(e)
+        input()
